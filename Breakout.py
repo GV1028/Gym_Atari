@@ -13,7 +13,7 @@ class airraid:
 		self.state = 0
 		self.imgdir = '/home/vignesh/Desktop/gymtry/images/'
 		self.memory = np.zeros((self.nobs, 1, 1, 1, 1, 1))
-		self.batch_size = 32	
+		self.batch_size = 1	
 		self.learning_rate = 1e-6
 		self.nb_epochs = 100
 		self.sess = tf.Session()
@@ -24,7 +24,7 @@ class airraid:
 		self.dqn()
 	
 	def create_placeholders(self):
-		self.imgs = tf.placeholder(tf.float32, shape = [None, 250, 160, 3])
+		self.imgs = tf.placeholder(tf.float32, shape = [None, 210, 160, 3])
 		#self.target = tf.placeholder(tf.float32, shape = [self.batch_size])
 		
 	def convlayers(self):
@@ -79,7 +79,8 @@ class airraid:
 			self.fc1 = tf.nn.bias_add(tf.matmul(poolflat, weights_fc), bias_fc)
 
 	def create_environment(self):
-		self.env = gym.make('AirRaid-v0')
+		self.env = gym.make('Breakout-v0')
+		self.env.mode = 'normal'
 
 	def set_experience_relay(self, inital_state, action, reward, final_state, terminal):
 		self.memory[self.currobs%self.nobs,0,:,:,:,:] = inital_state
@@ -105,32 +106,33 @@ class airraid:
 		img = np.array(img)
 		return img
 
-	def create_loss(self, y):
-		self.loss = tf.reduce_mean(tf.square(y - self.target))
+	def create_loss(self, y, ind):
+		self.loss = tf.reduce_mean(tf.square(y - self.fc1[int(ind)][0]))
 
 	def create_optim(self):
 		self.optim = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)	
 
 	def train(self):
 		x = self.get_experience_relay()
-		x_train = np.zeros((self.batch_size, 250, 160, 3))
-		y = np.zeros(self.batch_size, 6)
-		target = np.zeros(self.batch_size, 6)
+		x_train = np.zeros((self.batch_size, 210, 160, 3))
+		y = np.zeros(self.batch_size)
+		#target = np.zeros(self.batch_size, 6)
 		for i in range(x.shape[0]):
 			x_train[i,:,:,:] = self.get_state(x[i,:,:,:,0,:])
 			if(x[i,:,:,:,:,0] == 1):
 				y[i] = x[i,:,:,0,:,:]
 			else:
-				rewards = self.sess.run([self.fc1], feed_dict = {self.imgs: np.reshape(self.get_state(x[i,:,:,:,0,:]),(1, 250, 160, 3))})
+				rewards = self.sess.run([self.fc1], feed_dict = {self.imgs: np.reshape(self.get_state(x[i,:,:,:,0,:]),(1, 210, 160, 3))})
 				y[i] = x[i,:,:,0,:,:] + self.gamma*np.amax(rewards)
-			rewards = self.sess.run([self.fc1], feed_dict = {self.imgs:np.reshape(self.get_state(x[i,0,:,:,:,:]),(1, 250, 160, 3))})
+			rewards = self.sess.run([self.fc1], feed_dict = {self.imgs:np.reshape(self.get_state(x[i,0,:,:,:,:]),(1, 210, 160, 3))})
 			#print rewards
 			ind = np.reshape(x[i,:,0,:,:,:],(1))[0]
 			#print rewards[0][int(ind)][0] 
-			target[i, int(ind)[0]] = rewards[0][int(ind)][0] 	
+			#target[i, int(ind)[0]] = rewards[0][int(ind)][0] 	
 
-		self.create_loss(y)
+		self.create_loss(y, ind)
 		self.create_optim()
+		self.sess.run(tf.global_variables_initializer())
 		for i in range(self.nb_epochs):
 			_,curr_loss,rewards = self.sess.run([self.optim, self.loss, self.fc1], feed_dict = {self.imgs: x_train})
 			print "Iteration: {0} Current Loss: {1} Rewards:{2}".format(i, curr_loss, rewards)
@@ -156,7 +158,7 @@ class airraid:
 						i_count += 1
 					else:
 						self.save_state(observation, self.state)
-						observation = np.reshape(observation, (1, 250,160,3))
+						observation = np.reshape(observation, (1, 210,160,3))
 						rewards = self.sess.run([self.fc1], feed_dict = {self.imgs:observation})
 						action = np.argmax(rewards)
 						observation, reward, done, info = self.env.step(action)
@@ -168,7 +170,7 @@ class airraid:
 						i_count += 1	
 				else:
 					self.save_state(observation, self.state)
-					observation = np.reshape(observation, (1, 250,160,3))
+					observation = np.reshape(observation, (1, 210,160,3))
 					rewards = self.sess.run([self.fc1], feed_dict = {self.imgs:observation})
 					action = np.argmax(rewards)
 					observation, reward, done, info = self.env.step(action)
@@ -178,7 +180,7 @@ class airraid:
 					self.state = self.state + 1
 					self.save_state(observation, self.state)
 					i_count += 1	 
-				if i_episode>0:
+				if i_episode>=1:
 					self.train()
 			print "Total reward at end of episode {0} is {1}".format(i_episode, re)			 
 
